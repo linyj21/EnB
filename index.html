@@ -1,0 +1,745 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>迴歸分析工作台</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{
+  --bg:#EDF0F2; --paper:#FFFFFF; --ink:#1B2A41; --muted:#5B6B7F; --line:#CBD3DC;
+  --accent:#2E6F95; --accent-soft:#DCE9F1; --good:#2F7A4A; --warn:#A86A12; --bad:#B0413E; --row-flag:#FBEFE3;
+  --sans:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  --serif:"Noto Serif TC","Songti TC","PMingLiU",Georgia,serif;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#121A24; --paper:#1A2431; --ink:#E4EAF1; --muted:#93A2B4; --line:#2E3B4B;
+    --accent:#6FB0D6; --accent-soft:#1F3446; --good:#6CC08B; --warn:#E0A84A; --bad:#E57B72; --row-flag:#3A2C1E;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121A24; --paper:#1A2431; --ink:#E4EAF1; --muted:#93A2B4; --line:#2E3B4B;
+  --accent:#6FB0D6; --accent-soft:#1F3446; --good:#6CC08B; --warn:#E0A84A; --bad:#E57B72; --row-flag:#3A2C1E;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.65}
+.shell{max-width:1240px;margin:0 auto;padding:28px 20px 60px}
+.top{margin-bottom:24px;max-width:46em}
+.top h1{font-family:var(--serif);font-weight:700;font-size:clamp(1.7rem,3vw,2.3rem);margin:0 0 6px;letter-spacing:.02em}
+.lede{margin:0;color:var(--muted)}
+.layout{display:grid;gap:20px}
+@media (min-width:980px){.layout{grid-template-columns:300px minmax(0,1fr);align-items:start}.side{position:sticky;top:16px;max-height:calc(100vh - 32px);overflow-y:auto;overscroll-behavior:contain}}
+.panel{background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:20px}
+main > * + *,#results > * + *{margin-top:20px}
+h2{font-family:var(--serif);font-size:1.15rem;margin:0 0 12px;font-weight:700}
+.side section + section{border-top:1px solid var(--line);margin-top:20px;padding-top:20px}
+.drop{display:flex;flex-direction:column;gap:2px;align-items:flex-start;border:1.5px dashed var(--accent);border-radius:6px;padding:16px;cursor:pointer;background:var(--accent-soft)}
+.drop strong{color:var(--accent)}
+.drop span{font-size:.85rem;color:var(--muted)}
+.drop.over{outline:2px solid var(--accent)}
+.drop:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.link{background:none;border:0;color:var(--accent);padding:6px 0;font:inherit;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.note{font-size:.85rem;color:var(--muted);margin-top:6px}
+.note.err{color:var(--bad)}
+.field{display:block;margin-bottom:14px;font-weight:500}
+.field select{display:block;width:100%;margin-top:4px}
+fieldset.field{border:0;padding:0;margin:0 0 14px}
+legend{font-weight:500;padding:0;margin-bottom:4px}
+select{font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:4px;padding:7px 8px}
+.xlist{display:flex;flex-direction:column;gap:2px;max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:4px;padding:6px 8px}
+.check{display:flex;gap:8px;align-items:center;font-weight:400;cursor:pointer;padding:2px 0}
+.check input{accent-color:var(--accent);width:16px;height:16px;flex:none}
+.check.disabled{opacity:.45;cursor:not-allowed}
+.primary{width:100%;font:inherit;font-weight:700;color:#fff;background:var(--accent);border:0;border-radius:4px;padding:10px 14px;cursor:pointer;margin-top:4px}
+:root[data-theme="dark"] .primary{color:#0E1620}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .primary{color:#0E1620}}
+.secondary{font:inherit;color:var(--accent);background:transparent;border:1px solid var(--accent);border-radius:4px;padding:7px 12px;cursor:pointer}
+.secondary.fill{background:var(--accent);color:var(--paper)}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.scroll{overflow-x:auto}
+.tall{max-height:460px;overflow:auto}
+.preview{max-height:360px;overflow:auto;border:1px solid var(--line);border-radius:4px}
+.outlist{margin:4px 0 0;padding-left:1.1em}
+.outlist li{margin:0}
+.st-high{color:var(--bad);font-weight:700}.st-low{color:var(--accent);font-weight:700}.st-ok{color:var(--good)}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;font-size:.9rem}
+th,td{padding:7px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+td.text{text-align:left;white-space:normal;min-width:16em;color:var(--muted)}
+thead th{font-weight:700;color:var(--muted);border-bottom:1.5px solid var(--ink);background:var(--paper);position:sticky;top:0}
+tfoot td{font-weight:700;border-top:1.5px solid var(--ink)}
+tr.flag td{background:var(--row-flag)}
+.sig{color:var(--good);font-weight:700}
+.nsig{color:var(--muted)}
+.pos{color:var(--bad)}.neg{color:var(--accent)}
+.empty{color:var(--muted)}
+.empty p{margin:0 0 8px}
+/* 方程式 */
+.equation{border-left:4px solid var(--accent)}
+.eq{font-family:var(--serif);font-size:clamp(1.25rem,2.4vw,1.9rem);line-height:1.5;margin:4px 0 10px;word-break:break-word}
+.eq .v{font-family:var(--sans);font-weight:500;font-size:.8em;color:var(--accent)}
+.eqmeta{color:var(--muted);font-size:.9rem;margin:0}
+.metrics{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden;margin:16px 0 0}
+.metric{background:var(--paper);padding:12px 14px;display:flex;flex-direction:column}
+.metric dt{font-size:.82rem;color:var(--muted)}
+.metric dd{margin:0}
+.metric .val{display:block;font-size:1.3rem;font-weight:700;font-variant-numeric:tabular-nums;margin:2px 0 4px}
+.metric .say{display:grid;grid-template-columns:8px 1fr;gap:8px;font-size:.84rem;line-height:1.5;color:var(--muted)}
+.dot{width:8px;height:8px;border-radius:50%;margin-top:.5em}
+.dot.good{background:var(--good)}.dot.warn{background:var(--warn)}.dot.bad{background:var(--bad)}.dot.info{background:var(--accent)}
+.legend-note{font-size:.82rem;color:var(--muted);margin-top:8px}
+.pred{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;margin-bottom:12px}
+.pred label{font-weight:500;font-size:.9rem}
+.pred input,.pred select{display:block;width:100%;margin-top:4px;font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:4px;padding:7px 8px}
+.predout{font-variant-numeric:tabular-nums}
+.steps{margin:0 0 14px;padding-left:1.3em;max-width:60em}
+.steps li{margin-bottom:4px}
+.steps li b{font-weight:700}
+.inline{display:flex;align-items:center;gap:6px;font-weight:500}
+.inline input{width:5em;font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:4px;padding:6px 8px}
+.filebtn{display:inline-block}
+.filebtn:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.btnrow{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:4px 0 14px}
+.pfsum{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden;margin-bottom:14px}
+.pfsum div{background:var(--paper);padding:10px 12px}
+.pfsum dt{font-size:.8rem;color:var(--muted)}
+.pfsum dd{margin:0;font-weight:700;font-size:1.1rem;font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<div class="shell">
+  <header class="top">
+    <h1>迴歸分析工作台</h1>
+    <p class="lede">匯入月度資料的 Excel,選定 Y 與 X,即可得到線性迴歸方程式、顯著性檢定、模型判讀,以及指定期間的預測與實際值比較。所有運算都在瀏覽器內完成,檔案不會上傳到任何伺服器。</p>
+  </header>
+
+  <div class="layout">
+    <aside class="panel side">
+      <section>
+        <h2>資料</h2>
+        <label class="drop" id="drop">
+          <input type="file" id="file" accept=".xlsx,.xls,.csv" hidden>
+          <strong>選擇 Excel 檔案</strong>
+          <span>或拖曳到這裡(.xlsx、.xls、.csv)</span>
+        </label>
+        <button class="link" id="sampleBtn" type="button">下載範例 Excel 檔</button>
+        <div id="fileInfo" class="note"></div>
+        <label class="field" id="sheetWrap" hidden style="margin-top:12px">工作表
+          <select id="sheetSel"></select>
+        </label>
+      </section>
+
+      <section id="modelSec" hidden>
+        <h2>模型</h2>
+        <label class="field">應變數 Y
+          <select id="ySel"></select>
+        </label>
+        <fieldset class="field">
+          <legend>自變數 X(可複選)</legend>
+          <div id="xList" class="xlist"></div>
+        </fieldset>
+        <label class="check"><input type="checkbox" id="intercept" checked> 包含截距項</label>
+        <label class="field" style="margin-top:12px">信賴水準
+          <select id="conf">
+            <option value="0.90">90%</option>
+            <option value="0.95" selected>95%</option>
+            <option value="0.99">99%</option>
+          </select>
+        </label>
+        <button id="runBtn" class="primary" type="button">執行迴歸分析</button>
+        <div id="runMsg" class="note"></div>
+      </section>
+    </aside>
+
+    <main>
+      <section id="empty" class="panel empty">
+        <h2 style="color:var(--ink)">從左側匯入資料開始</h2>
+        <p>Excel 格式:第一列是標題;第一欄是年月(例如 2024-01);第二欄起每一欄是一個變數,欄數不限。</p>
+        <p>不確定格式的話,可以先下載範例 Excel 檔參考,或直接匯入它來測試。</p>
+      </section>
+
+      <section id="previewSec" class="panel" hidden>
+        <h2>資料預覽</h2>
+        <div class="scroll preview"><table id="preview"></table></div>
+        <p class="note" id="previewNote"></p>
+      </section>
+
+      <div id="results" hidden>
+        <section class="panel equation">
+          <h2>迴歸方程式</h2>
+          <div class="eq" id="eq"></div>
+          <p class="eqmeta" id="eqmeta"></p>
+          <dl class="metrics" id="metrics"></dl>
+        </section>
+
+        <section class="panel">
+          <h2>係數估計(斜率、截距與 t 檢定)</h2>
+          <div class="scroll"><table id="coefTable"></table></div>
+          <p class="legend-note">顯著性標記:*** p &lt; 0.001、** p &lt; 0.01、* p &lt; 0.05、. p &lt; 0.1。VIF 僅在有兩個以上 X 時計算。</p>
+        </section>
+
+        <section class="panel">
+          <h2>單點預測</h2>
+          <div class="pred" id="predInputs"></div>
+          <button class="secondary" id="predBtn" type="button">計算預測值</button>
+          <div class="predout note" id="predOut"></div>
+        </section>
+
+        <section class="panel">
+          <h2>期間預測與實際值比較</h2>
+          <ol class="steps">
+            <li><b>下載預測範本。</b>範本已預填資料最後一期之後的月份,以及目前模型的 X 與 Y 欄位。</li>
+            <li><b>填入實際值。</b>在 Excel 中填入各月實際發生的 X 與 Y。Y 暫時未知的月份可以先空白,只會算出預測值。</li>
+            <li><b>匯入填好的範本。</b>網站會把 X 代入迴歸方程式算出預測 Y,並與實際 Y 比較,結果可匯出 Excel。</li>
+          </ol>
+          <div class="btnrow">
+            <label class="inline">預測期數 <input type="number" id="pN" min="1" max="120" value="12"></label>
+            <button class="secondary" id="pTpl" type="button">下載預測範本</button>
+            <label class="secondary fill filebtn">匯入填好的範本<input type="file" id="pFile" accept=".xlsx,.xls,.csv" hidden></label>
+          </div>
+          <div class="note" id="pMsg"></div>
+          <div id="pResult" hidden>
+            <dl class="pfsum" id="pSum"></dl>
+            <div class="scroll tall"><table id="pTable"></table></div>
+            <p class="legend-note">差異% =(實際 Y − 預測 Y)÷ 預測 Y,以預測值作為「應有用量」的基準:正值代表實際用量高於預期、負值代表低於預期。差異超過 ±10% 標示為偏高或偏低,並以底色標出。匯出的 Excel 中預測 Y、差異與差異% 皆為公式,修改係數或 X 會自動重算。</p>
+            <div class="btnrow" style="margin-bottom:0"><button class="secondary fill" id="pExport" type="button">匯出比較分析 Excel</button></div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script>
+/* ================= 統計函式 ================= */
+function lnGamma(z){
+  const g=7,c=[0.99999999999980993,676.5203681218851,-1259.1392167224028,771.32342877765313,-176.61502916214059,12.507343278686905,-0.13857109526572012,9.9843695780195716e-6,1.5056327351493116e-7];
+  if(z<0.5) return Math.log(Math.PI/Math.sin(Math.PI*z))-lnGamma(1-z);
+  z-=1; let x=c[0]; for(let i=1;i<g+2;i++) x+=c[i]/(z+i);
+  const t=z+g+0.5; return 0.5*Math.log(2*Math.PI)+(z+0.5)*Math.log(t)-t+Math.log(x);
+}
+function betacf(x,a,b){
+  const FP=1e-300; let qab=a+b,qap=a+1,qam=a-1,c=1,d=1-qab*x/qap;
+  if(Math.abs(d)<FP)d=FP; d=1/d; let h=d;
+  for(let m=1;m<=500;m++){
+    const m2=2*m; let aa=m*(b-m)*x/((qam+m2)*(a+m2));
+    d=1+aa*d; if(Math.abs(d)<FP)d=FP; c=1+aa/c; if(Math.abs(c)<FP)c=FP; d=1/d; h*=d*c;
+    aa=-(a+m)*(qab+m)*x/((a+m2)*(qap+m2));
+    d=1+aa*d; if(Math.abs(d)<FP)d=FP; c=1+aa/c; if(Math.abs(c)<FP)c=FP; d=1/d;
+    const del=d*c; h*=del; if(Math.abs(del-1)<3e-15)break;
+  }
+  return h;
+}
+function ibeta(x,a,b){
+  if(x<=0)return 0; if(x>=1)return 1;
+  const bt=Math.exp(lnGamma(a+b)-lnGamma(a)-lnGamma(b)+a*Math.log(x)+b*Math.log(1-x));
+  return x<(a+1)/(a+b+2) ? bt*betacf(x,a,b)/a : 1-bt*betacf(1-x,b,a)/b;
+}
+const tTwoSidedP=(t,df)=>!Number.isFinite(t)?0:ibeta(df/(df+t*t),df/2,0.5);
+const fUpperP=(F,d1,d2)=>!Number.isFinite(F)?0:(F<=0?1:ibeta(d2/(d2+d1*F),d2/2,d1/2));
+function gammaP(a,x){
+  if(x<=0)return 0;
+  const lead=Math.exp(-x+a*Math.log(x)-lnGamma(a));
+  if(x<a+1){ let ap=a,sum=1/a,del=sum; for(let n=0;n<1000;n++){ap++;del*=x/ap;sum+=del;if(Math.abs(del)<Math.abs(sum)*1e-15)break;} return sum*lead; }
+  const FP=1e-300; let b=x+1-a,c=1/FP,d=1/b,h=d;
+  for(let i=1;i<1000;i++){const an=-i*(i-a);b+=2;d=an*d+b;if(Math.abs(d)<FP)d=FP;c=b+an/c;if(Math.abs(c)<FP)c=FP;d=1/d;const del=d*c;h*=del;if(Math.abs(del-1)<1e-15)break;}
+  return 1-lead*h;
+}
+const chi2UpperP=(x,df)=>Math.max(0,1-gammaP(df/2,x/2));
+function tCrit(alpha,df){ let lo=0,hi=1e4; for(let i=0;i<200;i++){const m=(lo+hi)/2; if(tTwoSidedP(m,df)>alpha)lo=m; else hi=m;} return (lo+hi)/2; }
+
+/* ================= 矩陣與 OLS ================= */
+function inverseSym(M){
+  const n=M.length, diag=M.map((r,i)=>r[i]);
+  const A=M.map((r,i)=>[...r,...Array.from({length:n},(_,j)=>i===j?1:0)]);
+  for(let c=0;c<n;c++){
+    const pv=A[c][c];
+    if(!(Math.abs(pv)>1e-10*Math.max(Math.abs(diag[c]),1e-300))) return null;
+    for(let j=0;j<2*n;j++) A[c][j]/=pv;
+    for(let r=0;r<n;r++) if(r!==c){const f=A[r][c]; if(f!==0) for(let j=0;j<2*n;j++) A[r][j]-=f*A[c][j];}
+  }
+  return A.map(r=>r.slice(n));
+}
+function ols(y,Xcols,intercept){
+  const n=y.length, X=[];
+  for(let i=0;i<n;i++){const r=intercept?[1]:[]; Xcols.forEach(c=>r.push(c[i])); X.push(r);}
+  const p=X[0].length;
+  const XtX=Array.from({length:p},()=>Array(p).fill(0)), Xty=Array(p).fill(0);
+  for(let i=0;i<n;i++) for(let a=0;a<p;a++){ Xty[a]+=X[i][a]*y[i]; for(let b=0;b<p;b++) XtX[a][b]+=X[i][a]*X[i][b]; }
+  const inv=inverseSym(XtX); if(!inv) return {error:'singular'};
+  const beta=inv.map(r=>r.reduce((s,v,j)=>s+v*Xty[j],0));
+  const fitted=X.map(r=>r.reduce((s,v,j)=>s+v*beta[j],0));
+  const resid=y.map((v,i)=>v-fitted[i]);
+  const SSE=resid.reduce((s,e)=>s+e*e,0);
+  const ybar=y.reduce((s,v)=>s+v,0)/n;
+  const SST=intercept? y.reduce((s,v)=>s+(v-ybar)**2,0) : y.reduce((s,v)=>s+v*v,0);
+  return {X,beta,inv,fitted,resid,SSE,SST,n,p,ybar};
+}
+const mean=a=>a.reduce((s,v)=>s+v,0)/a.length;
+const sd=a=>{const m=mean(a);return Math.sqrt(a.reduce((s,v)=>s+(v-m)**2,0)/(a.length-1));};
+
+/* ================= 資料處理 ================= */
+const state={wb:null,headers:[],dates:[],num:[],numericCols:[],model:null,pf:null};
+const $=s=>document.querySelector(s);
+// 標題正規化:移除 Excel 儲存格內換行(Alt+Enter)產生的 \r\n 與 _x000D_,多個空白合併為一個
+const normHeader=h=>h==null?'':String(h).replace(/_x000[dD]_/g,' ').replace(/\s+/g,' ').trim();
+const headerKey=h=>normHeader(h).replace(/\s+/g,'').toLowerCase();
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+function fmtDate(v){
+  if(v instanceof Date && !isNaN(v)){ const d=new Date(v.getTime()+12*3600e3); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; }
+  if(typeof v==='number' && Number.isInteger(v) && v>=190001 && v<=210012 && v%100>=1 && v%100<=12) return `${Math.floor(v/100)}-${String(v%100).padStart(2,'0')}`;
+  return v==null?'':String(v).trim();
+}
+function toNum(v){
+  if(typeof v==='number') return Number.isFinite(v)?v:NaN;
+  if(v==null) return NaN;
+  let s=String(v).trim().replace(/,/g,''); if(s==='') return NaN;
+  let pct=false; if(s.endsWith('%')){pct=true;s=s.slice(0,-1);}
+  const n=Number(s); return Number.isFinite(n)?(pct?n/100:n):NaN;
+}
+
+function loadWorkbook(wb,label){
+  state.wb=wb;
+  $('#fileInfo').className='note';
+  $('#fileInfo').textContent=`已載入:${label}`;
+  $('#sheetSel').innerHTML=wb.SheetNames.map((n,i)=>`<option value="${i}">${esc(n)}</option>`).join('');
+  $('#sheetWrap').hidden=wb.SheetNames.length<2;
+  loadSheet(0);
+}
+function loadSheet(idx){
+  const ws=state.wb.Sheets[state.wb.SheetNames[idx]];
+  const aoa=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:null,blankrows:false});
+  if(aoa.length<3){ showFileError('這個工作表的資料少於兩列,無法分析。請確認第一列是標題、下方有資料。'); return; }
+  const width=Math.max(...aoa.map(r=>r.length));
+  const seen={};
+  state.headers=Array.from({length:width},(_,i)=>{
+    let h=normHeader(aoa[0][i]); h=(h==='')?(i===0?'年月':`變數${i}`):String(h).trim();
+    if(seen[h]){seen[h]++; h=`${h}(${seen[h]})`;} else seen[h]=1; return h;
+  });
+  const rows=aoa.slice(1).filter(r=>r.some(v=>v!==null&&String(v).trim()!==''));
+  state.dates=rows.map(r=>fmtDate(r[0]));
+  state.num=state.headers.map((_,j)=>rows.map(r=>toNum(r[j])));
+  state.numericCols=[];
+  for(let j=1;j<width;j++){ if(state.num[j].filter(Number.isFinite).length>=3) state.numericCols.push(j); }
+  if(state.numericCols.length<2){ showFileError('至少需要兩個數值欄位(一個 Y、一個 X)。請確認第二欄起是數字資料。'); return; }
+  renderPreview(rows,width);
+  buildModelControls();
+  $('#results').hidden=true; $('#empty').hidden=true;
+}
+function showFileError(msg){
+  $('#fileInfo').className='note err'; $('#fileInfo').textContent=msg;
+  $('#modelSec').hidden=true; $('#previewSec').hidden=true; $('#results').hidden=true; $('#empty').hidden=false;
+}
+function renderPreview(rows,width){
+  const show=rows;
+  let h='<thead><tr>'+state.headers.map(x=>`<th>${esc(x)}</th>`).join('')+'</tr></thead><tbody>';
+  show.forEach((r,i)=>{ h+='<tr>'+Array.from({length:width},(_,j)=>`<td>${j===0?esc(state.dates[i]):(r[j]==null?'':esc(fmtCell(r[j])))}</td>`).join('')+'</tr>'; });
+  $('#preview').innerHTML=h+'</tbody>';
+  $('#previewNote').textContent=`共 ${rows.length} 期資料(${state.dates[0]} 至 ${state.dates[rows.length-1]})、${width-1} 個變數欄位,可在表格內上下左右捲動查看全部資料。`;
+  $('#previewSec').hidden=false;
+}
+const fmtCell=v=>v instanceof Date?fmtDate(v):(typeof v==='number'?fmt(v,4):v);
+
+function buildModelControls(){
+  $('#ySel').innerHTML=state.numericCols.map(j=>`<option value="${j}">${esc(state.headers[j])}</option>`).join('');
+  $('#xList').innerHTML=state.numericCols.map(j=>`<label class="check"><input type="checkbox" value="${j}"> ${esc(state.headers[j])}</label>`).join('');
+  const y=state.numericCols[0]; $('#ySel').value=y;
+  $('#xList').querySelectorAll('input').forEach(cb=>{cb.checked=Number(cb.value)!==y;});
+  syncX(); $('#modelSec').hidden=false; $('#runMsg').textContent='';
+}
+function syncX(){
+  const y=Number($('#ySel').value);
+  $('#xList').querySelectorAll('label').forEach(l=>{
+    const cb=l.querySelector('input'), isY=Number(cb.value)===y;
+    cb.disabled=isY; if(isY) cb.checked=false; l.classList.toggle('disabled',isY);
+  });
+}
+
+/* ================= 分析 ================= */
+function analyze(yIdx,xIdx,intercept,conf,rowOk=()=>true){
+  const alpha=1-conf, used=[];
+  for(let i=0;i<state.dates.length;i++){
+    if(rowOk(i) && Number.isFinite(state.num[yIdx][i]) && xIdx.every(j=>Number.isFinite(state.num[j][i]))) used.push(i);
+  }
+  const n=used.length,k=xIdx.length,p=k+(intercept?1:0);
+  if(n<p+2) throw new Error(`有效資料只有 ${n} 筆,估計 ${p} 個參數並做檢定至少需要 ${p+2} 筆。請減少 X 或補齊資料。`);
+  const y=used.map(i=>state.num[yIdx][i]);
+  const Xc=xIdx.map(j=>used.map(i=>state.num[j][i]));
+  const f=ols(y,Xc,intercept);
+  if(f.error) throw new Error('自變數之間有完全共線性(例如某欄是另一欄的倍數、或某個 X 是常數),請移除其中一個變數。');
+  if(f.SST===0) throw new Error('Y 在所有期間都相同,沒有變異可以解釋。');
+  const dfR=n-p, dfM=k, s2=f.SSE/dfR, s=Math.sqrt(s2), tc=tCrit(alpha,dfR);
+  const names=[...(intercept?['截距']:[]),...xIdx.map(j=>state.headers[j])];
+  const sdY=sd(y);
+  const coefs=f.beta.map((b,j)=>{
+    const se=Math.sqrt(Math.max(f.inv[j][j]*s2,0)), t=b/se, pv=tTwoSidedP(Math.abs(t),dfR);
+    const isX=!(intercept&&j===0), xi=isX?j-(intercept?1:0):-1;
+    return {name:names[j],b,se,t,p:pv,lo:b-tc*se,hi:b+tc*se,isX,stdBeta:isX?b*sd(Xc[xi])/sdY:NaN,vif:NaN};
+  });
+  if(k>=2){
+    coefs.filter(c=>c.isX).forEach((c,xi)=>{
+      const aux=ols(Xc[xi],Xc.filter((_,q)=>q!==xi),true);
+      const r2=aux.error?1:1-aux.SSE/aux.SST; c.vif=r2>=1?Infinity:1/(1-r2);
+    });
+  }
+  const SSR=f.SST-f.SSE, R2=1-f.SSE/f.SST;
+  const adjR2=1-(1-R2)*((intercept?n-1:n)/dfR);
+  const F=dfM>0?(SSR/dfM)/s2:NaN, pF=fUpperP(F,dfM,dfR);
+  let dwNum=0; for(let i=1;i<n;i++) dwNum+=(f.resid[i]-f.resid[i-1])**2;
+  const DW=dwNum/f.SSE;
+  const AIC=n*Math.log(f.SSE/n)+2*p, BIC=n*Math.log(f.SSE/n)+p*Math.log(n);
+  const MAE=mean(f.resid.map(Math.abs));
+  const MAPE=y.every(v=>v!==0)?mean(f.resid.map((e,i)=>Math.abs(e/y[i])))*100:NaN;
+  const hat=f.X.map(r=>{let q=0;for(let a=0;a<p;a++)for(let b=0;b<p;b++)q+=r[a]*f.inv[a][b]*r[b];return q;});
+  const stdRes=f.resid.map((e,i)=>e/(s*Math.sqrt(Math.max(1-hat[i],1e-12))));
+  const cook=stdRes.map((r,i)=>r*r*hat[i]/(p*Math.max(1-hat[i],1e-12)));
+  const em=mean(f.resid), m2=mean(f.resid.map(e=>(e-em)**2)), m3=mean(f.resid.map(e=>(e-em)**3)), m4=mean(f.resid.map(e=>(e-em)**4));
+  const skew=m3/Math.pow(m2,1.5), kurt=m4/(m2*m2), JB=n/6*(skew*skew+(kurt-3)**2/4), pJB=chi2UpperP(JB,2);
+  let BP=NaN,pBP=NaN;
+  const aux=ols(f.resid.map(e=>e*e),Xc,true);
+  if(!aux.error&&aux.SST>0){BP=n*(1-aux.SSE/aux.SST); pBP=chi2UpperP(BP,k);}
+  return {yIdx,xIdx,intercept,conf,alpha,n,k,p,dfR,dfM,s,s2,tc,coefs,SSR,SSE:f.SSE,SST:f.SST,R2,adjR2,R:Math.sqrt(Math.max(R2,0)),F,pF,DW,AIC,BIC,MAE,MAPE,
+    ybar:f.ybar,y,Xc,fitted:f.fitted,resid:f.resid,hat,stdRes,cook,skew,kurt,JB,pJB,BP,pBP,inv:f.inv,used,
+    dates:used.map(i=>state.dates[i]),dropped:state.dates.length-n,yName:state.headers[yIdx],xNames:xIdx.map(j=>state.headers[j])};
+}
+
+/* ================= 格式 ================= */
+function fmt(v,d=4){
+  if(v==null||Number.isNaN(v)) return '—';
+  if(!Number.isFinite(v)) return v>0?'∞':'−∞';
+  const a=Math.abs(v); if(a!==0&&(a>=1e9||a<1e-4)) return v.toExponential(3);
+  return v.toLocaleString('en-US',{maximumFractionDigits:d});
+}
+const fmtP=p=>!Number.isFinite(p)?'—':(p<0.0001?'< 0.0001':p.toFixed(4));
+const fmtPct=v=>Number.isFinite(v)?(v>0?'+':'')+(v*100).toFixed(2)+'%':'—';
+const stars=p=>p<0.001?'***':p<0.01?'**':p<0.05?'*':p<0.1?'.':'';
+function eqText(m,coefs){
+  return 'Ŷ = '+coefs.map((b,i)=>{
+    const c=m.coefs[i], v=fmt(Math.abs(b),6), term=c.isX?`${v} × ${c.name}`:v;
+    return i===0?(b<0?'−':'')+term:(b<0?' − ':' + ')+term;
+  }).join('');
+}
+
+/* ================= 呈現 ================= */
+function render(m){
+  let eq='<span>Ŷ</span> = ';
+  m.coefs.forEach((c,i)=>{
+    const v=fmt(Math.abs(c.b),4), term=c.isX?`${v} × <span class="v">${esc(c.name)}</span>`:v;
+    eq+=i===0?(c.b<0?'−':'')+term:` ${c.b<0?'−':'+'} ${term}`;
+  });
+  $('#eq').innerHTML=eq;
+  $('#eqmeta').textContent=`Y:${m.yName};樣本 ${m.n} 期(${m.dates[0]} 至 ${m.dates[m.n-1]})${m.dropped?`,已排除 ${m.dropped} 期缺值資料`:''};信賴水準 ${Math.round(m.conf*100)}%`;
+  renderMetrics(m);
+  renderCoefs(m);
+  renderPredict(m);
+  setupPeriod(m);
+  $('#results').hidden=false;
+  $('#results').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth',block:'start'});
+}
+
+function dwText(d){ return d<1.5?'殘差有正自我相關,p 值可能被低估,顯著性不可全信;可考慮改用差分或成長率。':d>2.5?'殘差有負自我相關,需留意模型設定。':'約接近 2,殘差沒有明顯的自我相關。'; }
+
+function renderMetrics(m){
+  const a=m.alpha, al=a.toFixed(2), C=[];
+  const r2p=fmt(Math.max(m.R2,0)*100,1);
+  C.push(['R²',fmt(m.R2,4),m.R2>=0.7?'good':m.R2>=0.4?'info':'warn',
+    `模型可解釋 ${m.yName} 約 ${r2p}% 的變化,解釋力${m.R2>=0.7?'高':m.R2>=0.4?'中等':'偏低'}。${m.R2>=0.9?'數值很高時,要留意是否只是 X 與 Y 同時隨時間成長造成。':''}`]);
+  const gap=m.R2-m.adjR2;
+  C.push(['調整後 R²',fmt(m.adjR2,4),gap>0.05?'warn':'good',
+    gap>0.05?`比 R² 低了 ${fmt(gap,3)},可能放了沒有幫助的 X,可試著移除不顯著的變數。`:'扣除變數數量影響後的解釋力,與 R² 接近,表示 X 的數量合理。比較不同模型時以此為準。']);
+  C.push(['相關係數 R',fmt(m.R,4),m.R>=0.7?'good':m.R>=0.4?'info':'warn',
+    `X 與 Y 的整體關聯強度${m.R>=0.7?'強':m.R>=0.4?'中等':'弱'}(0 為無關、1 為完全相關)。`]);
+  C.push(['F 檢定 p 值',fmtP(m.pF),m.pF<a?'good':'bad',
+    `F = ${fmt(m.F,3)}。${m.pF<a?`p < ${al},模型整體顯著,這組 X 對 Y 有解釋力。`:`p ≥ ${al},模型整體不顯著,無法證明這組 X 能解釋 Y。`}`]);
+  const sePct=m.ybar!==0?Math.abs(m.s/m.ybar*100):NaN;
+  C.push(['迴歸標準誤',fmt(m.s,4),Number.isFinite(sePct)&&sePct>20?'warn':'info',
+    `預測值通常偏離實際值約 ±${fmt(m.s,2)}${Number.isFinite(sePct)?`,約為 Y 平均值的 ${fmt(sePct,1)}%`:''}。約 95% 的實際值落在預測值 ±${fmt(2*m.s,2)} 以內。`]);
+  C.push(['MAE 平均絕對誤差',fmt(m.MAE,4),'info',`樣本期間內,每期預測與實際平均差 ${fmt(m.MAE,2)}(與 Y 同單位)。`]);
+  if(Number.isFinite(m.MAPE)){
+    const q=m.MAPE<10?['good','高度準確']:m.MAPE<20?['good','良好']:m.MAPE<50?['warn','尚可']:['bad','不準確'];
+    C.push(['MAPE 平均百分比誤差',fmt(m.MAPE,2)+'%',q[0],`每期平均誤差約為實際值的 ${fmt(m.MAPE,1)}%,預測能力屬於「${q[1]}」(<10% 高度準確、10–20% 良好、20–50% 尚可)。`]);
+  }
+  if(m.k>=2){
+    const xs=m.coefs.filter(c=>c.isX), mx=Math.max(...xs.map(c=>c.vif)), who=xs.find(c=>c.vif===mx).name;
+    C.push(['最大 VIF(共線性)',fmt(mx,2),mx>10?'bad':mx>5?'warn':'good',
+      mx>10?`「${who}」與其他 X 高度相關,係數不穩定、正負號可能與直覺相反,建議移除其一。`:mx>5?`「${who}」與其他 X 有一定相關,解讀個別係數時要小心。`:'X 之間的共線性不嚴重(>5 需留意、>10 嚴重)。']);
+  }
+  C.push(['殘差常態性 p 值',fmtP(m.pJB),m.pJB<0.05?'warn':'good',
+    `Jarque-Bera 檢定。${m.pJB<0.05?'殘差偏離常態分布,樣本少時 t、F 檢定的可信度會下降。':'殘差大致符合常態分布,t、F 檢定可信。'}`]);
+  if(Number.isFinite(m.pBP)) C.push(['異質變異 p 值',fmtP(m.pBP),m.pBP<0.05?'warn':'good',
+    `Breusch-Pagan 檢定。${m.pBP<0.05?'誤差大小會隨 X 變化,標準誤與 p 值可能不準,可考慮將變數取對數。':'誤差大小穩定,沒有異質變異問題。'}`]);
+  const cookTh=4/m.n;
+  const lim=2*m.s;
+  const big=m.dates.filter((_,i)=>Math.abs(m.resid[i])>lim);
+  const infl=m.dates.filter((_,i)=>m.cook[i]>cookTh&&Math.abs(m.resid[i])<=lim);
+  let outHtml=`實際值與配適值的差距超過 ±${fmt(lim,2)}(2 倍迴歸標準誤),即視為離群月份。`;
+  outHtml+=big.length?`<br>超過門檻:${esc(big.join('、'))}。`:'<br>目前沒有月份超過門檻。';
+  if(infl.length) outHtml+=`<br>另有對方程式影響特別大的月份:${esc(infl.join('、'))}。`;
+  if(big.length||infl.length) outHtml+='<br>建議回頭檢查這些月份是否有特殊事件或輸入錯誤。';
+  C.push(['離群門檻(殘差 ±2 倍標準誤)',`±${fmt(lim,2)}`,big.length+infl.length?'warn':'good',{html:outHtml}]);
+  const ratio=m.n/m.k;
+  C.push(['樣本數',`${m.n} 期`,ratio<10?'warn':'good',
+    ratio<10?`每個 X 平均只有 ${fmt(ratio,1)} 筆資料,一般建議至少 10–20 筆,結果可能不穩定。`:`每個 X 平均有 ${fmt(ratio,1)} 筆資料,樣本量足夠。`]);
+  $('#metrics').innerHTML=C.map(([t,v,l,s])=>`<div class="metric"><dt>${t}</dt><dd><span class="val">${v}</span><span class="say"><span class="dot ${l}"></span><span>${typeof s==='object'?s.html:esc(s)}</span></span></dd></div>`).join('');
+}
+
+function renderCoefs(m){
+  const cl=Math.round(m.conf*100), a=m.alpha;
+  let ct=`<thead><tr><th>變數</th><th>係數</th><th>標準誤</th><th>t 值</th><th>p 值</th><th></th><th>${cl}% 下限</th><th>${cl}% 上限</th><th>VIF</th></tr></thead><tbody>`;
+  m.coefs.forEach(c=>{
+    const sig=c.p<a;
+    ct+=`<tr><td>${esc(c.name)}</td><td>${fmt(c.b,6)}</td><td>${fmt(c.se,6)}</td><td>${fmt(c.t,3)}</td><td class="${sig?'sig':'nsig'}">${fmtP(c.p)}</td><td>${stars(c.p)}</td><td>${fmt(c.lo,6)}</td><td>${fmt(c.hi,6)}</td><td>${fmt(c.vif,2)}</td></tr>`;
+  });
+  $('#coefTable').innerHTML=ct+'</tbody>';
+}
+
+/* ================= 單點預測 ================= */
+function renderPredict(m){
+  $('#predInputs').innerHTML=m.xNames.map((n,i)=>`<label>${esc(n)}<input type="number" step="any" data-i="${i}" value="${+mean(m.Xc[i]).toPrecision(6)}"></label>`).join('');
+  $('#predOut').textContent='預設帶入各 X 的平均值,可自行修改。';
+}
+function doPredict(){
+  const m=state.model; if(!m) return;
+  const xs=[...document.querySelectorAll('#predInputs input')].map(i=>toNum(i.value));
+  if(xs.some(v=>!Number.isFinite(v))){$('#predOut').textContent='每個 X 都需要填入數字。';return;}
+  const x0=[...(m.intercept?[1]:[]),...xs];
+  const yhat=x0.reduce((s,v,j)=>s+v*m.coefs[j].b,0);
+  let q=0; for(let a=0;a<m.p;a++)for(let b=0;b<m.p;b++)q+=x0[a]*m.inv[a][b]*x0[b];
+  const seM=m.s*Math.sqrt(q), seP=m.s*Math.sqrt(1+q), cl=Math.round(m.conf*100);
+  const extrap=xs.some((v,i)=>v<Math.min(...m.Xc[i])||v>Math.max(...m.Xc[i]));
+  $('#predOut').innerHTML=`<span style="color:var(--ink);font-size:1.1rem;font-weight:700">預測 ${esc(m.yName)} = ${fmt(yhat,4)}</span><br>
+    平均值的 ${cl}% 信賴區間:[${fmt(yhat-m.tc*seM,4)}, ${fmt(yhat+m.tc*seM,4)}]<br>
+    單一新觀察值的 ${cl}% 預測區間:[${fmt(yhat-m.tc*seP,4)}, ${fmt(yhat+m.tc*seP,4)}]
+    ${extrap?'<br><span style="color:var(--warn)">輸入值超出樣本範圍,屬於外插預測,可靠度較低。</span>':''}`;
+}
+
+/* ================= 期間預測 ================= */
+function setupPeriod(m){
+  state.pf=null; state.pfData=null;
+  $('#pResult').hidden=true;
+  $('#pMsg').className='note';
+  $('#pMsg').textContent=`目前方程式:${eqText(m,m.coefs.map(c=>c.b))}`;
+}
+function lastDate(){ for(let i=state.dates.length-1;i>=0;i--) if(state.dates[i]) return state.dates[i]; return ''; }
+function nextMonths(last,n){
+  const mm=String(last).match(/(\d{4})\D*?(\d{1,2})/);
+  if(!mm||+mm[2]<1||+mm[2]>12) return Array.from({length:n},(_,i)=>`預測第${i+1}期`);
+  let y=+mm[1], mo=+mm[2];
+  return Array.from({length:n},()=>{ mo++; if(mo>12){mo=1;y++;} return `${y}-${String(mo).padStart(2,'0')}`; });
+}
+function downloadTemplate(){
+  const m=state.model; if(!m) return;
+  const n=Math.max(1,Math.min(120,Math.round(Number($('#pN').value))||12));
+  const months=nextMonths(lastDate(),n);
+  const head=['年月',`實際 ${m.yName}`,...m.xNames];
+  const ws=XLSX.utils.aoa_to_sheet([head,...months.map(d=>[d])]);
+  ws['!cols']=head.map((_,i)=>({wch:i===0?10:16}));
+  const info=XLSX.utils.aoa_to_sheet([
+    ['填寫說明'],
+    ['1. 在「預測期間」工作表中,填入各月實際的 X 與 Y 數值,請勿更改第一列標題。'],
+    ['2. Y 暫時未知的月份可以留白,網站只會算出預測值。'],
+    ['3. 可以自行增減月份列,年月格式建議為 YYYY-MM。'],
+    ['4. 填好後回到網站,按「匯入填好的範本」。'],
+    [],
+    ['迴歸方程式',eqText(m,m.coefs.map(c=>c.b))],
+    ['參數',...m.coefs.map(c=>c.name)],
+    ['係數',...m.coefs.map(c=>c.b)],
+    ['建立方程式的資料',`${m.dates[0]} 至 ${m.dates[m.n-1]},共 ${m.n} 期`]
+  ]);
+  info['!cols']=[{wch:18},{wch:60}];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'預測期間');
+  XLSX.utils.book_append_sheet(wb,info,'說明');
+  XLSX.writeFile(wb,`預測範本_${m.yName}_${months[0]}_${months[n-1]}.xlsx`);
+}
+function importFilled(wb){
+  const m=state.model, msg=$('#pMsg'); msg.className='note';
+  const name=wb.SheetNames.includes('預測期間')?'預測期間':wb.SheetNames[0];
+  const aoa=XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,raw:true,defval:null,blankrows:false});
+  if(aoa.length<2) throw new Error('範本中沒有資料列。');
+  const head=aoa[0].map(headerKey);
+  const xCols=m.xNames.map(n=>head.indexOf(headerKey(n)));
+  const miss=m.xNames.filter((_,q)=>xCols[q]<0);
+  if(miss.length) throw new Error(`找不到 X 欄位:${miss.join('、')}。請確認標題與目前模型一致,或重新下載範本。`);
+  let yCol=head.indexOf(headerKey(`實際 ${m.yName}`)); if(yCol<0) yCol=head.indexOf(headerKey(m.yName));
+  if(yCol<0) throw new Error(`找不到「實際 ${m.yName}」欄位,請重新下載範本。`);
+  const rows=aoa.slice(1).filter(r=>r.some(v=>v!==null&&String(v).trim()!==''));
+  state.pfData={file:name,dates:rows.map(r=>fmtDate(r[0])),xs:rows.map(r=>xCols.map(c=>toNum(r[c]))),act:rows.map(r=>toNum(r[yCol]))};
+  runPeriod();
+}
+function runPeriod(){
+  const m=state.model, d=state.pfData; if(!m||!d) return;
+  const coefs=m.coefs.map(c=>c.b), ic=m.intercept?1:0;
+  const source=`以 ${m.dates[0]} 至 ${m.dates[m.n-1]}(${m.n} 期)資料建立的方程式`;
+  const rows=d.dates.map((date,i)=>{
+    const xs=d.xs[i], ok=xs.every(Number.isFinite);
+    const pred=ok?(ic?coefs[0]:0)+xs.reduce((a,v,q)=>a+v*coefs[q+ic],0):NaN;
+    const act=d.act[i];
+    const diff=Number.isFinite(pred)&&Number.isFinite(act)?act-pred:NaN;
+    const pct=Number.isFinite(diff)&&pred!==0?diff/pred:NaN;
+    const status=!Number.isFinite(pct)?'':pct>0.1?'偏高':pct<-0.1?'偏低':'正常';
+    return {date,xs,act,pred,diff,pct,ok,status};
+  });
+  const cmp=rows.filter(r=>Number.isFinite(r.diff));
+  const sumA=cmp.reduce((a,r)=>a+r.act,0), sumP=cmp.reduce((a,r)=>a+r.pred,0);
+  const pcts=cmp.filter(r=>Number.isFinite(r.pct));
+  const mape=pcts.length?mean(pcts.map(r=>Math.abs(r.pct))):NaN;
+  const within5=pcts.filter(r=>Math.abs(r.pct)<=0.05).length;
+  const worst=pcts.reduce((w,r)=>!w||Math.abs(r.pct)>Math.abs(w.pct)?r:w,null);
+  const nHigh=pcts.filter(r=>r.status==='偏高').length, nLow=pcts.filter(r=>r.status==='偏低').length;
+  state.pf={rows,coefs,source,sumA,sumP,mape,within5,nHigh,nLow,nCmp:cmp.length,nPct:pcts.length,eq:eqText(m,coefs)};
+
+  const noX=rows.filter(r=>!r.ok).length, noY=rows.filter(r=>r.ok&&!Number.isFinite(r.act)).length;
+  $('#pMsg').textContent=`已匯入 ${rows.length} 期(${rows[0]?.date||''} 至 ${rows[rows.length-1]?.date||''})。${noX?`${noX} 期 X 未填完整,無法預測;`:''}${noY?`${noY} 期沒有實際 Y,只顯示預測值;`:''}使用${source}。`;
+  const tot=sumP!==0?(sumA-sumP)/sumP:NaN;
+  $('#pSum').innerHTML=[
+    ['可比較期數',`${pcts.length} / ${rows.length} 期`],
+    [`實際 ${m.yName} 合計`,fmt(sumA,2)],
+    [`預測 ${m.yName} 合計`,fmt(sumP,2)],
+    ['合計差異%',fmtPct(tot)],
+    ['平均絕對差異%',Number.isFinite(mape)?`${(mape*100).toFixed(2)}%`:'—'],
+    ['差異在 ±5% 內',`${within5} / ${pcts.length} 期`],
+    ['偏高 / 偏低(超過 ±10%)',`${nHigh} / ${nLow} 期`],
+    ['差異最大月份',worst?`${worst.date}(${fmtPct(worst.pct)})`:'—']
+  ].map(([a,b])=>`<div><dt>${esc(a)}</dt><dd>${esc(b)}</dd></div>`).join('');
+
+  let h=`<thead><tr><th>年月</th><th>實際 ${esc(m.yName)}</th>${m.xNames.map(n=>`<th>${esc(n)}</th>`).join('')}<th>預測 ${esc(m.yName)}</th><th>差異(實際−預測)</th><th>差異%</th><th>狀態</th></tr></thead><tbody>`;
+  rows.forEach(r=>{
+    const flag=Math.abs(r.pct)>0.1, cls=!Number.isFinite(r.pct)?'':r.pct>0?'pos':'neg';
+    h+=`<tr${flag?' class="flag"':''}><td>${esc(r.date)}</td><td>${fmt(r.act,4)}</td>${r.xs.map(v=>`<td>${fmt(v,4)}</td>`).join('')}<td>${r.ok?fmt(r.pred,4):'X 未填'}</td><td>${fmt(r.diff,4)}</td><td class="${cls}">${fmtPct(r.pct)}</td><td class="${r.status==='偏高'?'st-high':r.status==='偏低'?'st-low':'st-ok'}">${r.status}</td></tr>`;
+  });
+  h+=`</tbody><tfoot><tr><td>合計</td><td>${fmt(sumA,4)}</td>${m.xNames.map(()=>'<td></td>').join('')}<td>${fmt(sumP,4)}</td><td>${fmt(sumA-sumP,4)}</td><td>${fmtPct(tot)}</td><td></td></tr></tfoot>`;
+  $('#pTable').innerHTML=h;
+  $('#pResult').hidden=false;
+}
+
+function exportPeriod(){
+  const m=state.model, pf=state.pf; if(!m||!pf||!pf.rows.length) return;
+  const E=XLSX.utils.encode_cell, C=XLSX.utils.encode_col, ws={};
+  const put=(r,c,cell)=>{ ws[E({r,c})]=typeof cell==='object'&&cell!==null?cell:(typeof cell==='number'?{t:'n',v:cell}:{t:'s',v:String(cell??'')}); };
+  const k=m.k, ic=m.intercept?1:0;
+  // 表頭區
+  put(0,0,'迴歸方程式'); put(0,1,pf.eq);
+  put(1,0,'模型來源'); put(1,1,pf.source);
+  put(2,0,'參數'); m.coefs.forEach((c,j)=>put(2,1+j,c.name));
+  put(3,0,'係數'); pf.coefs.forEach((b,j)=>put(3,1+j,b));
+  put(4,0,'說明'); put(4,1,'預測 Y 以第 4 列係數代入各期 X 計算;差異 = 實際 Y − 預測 Y;差異% = 差異 ÷ 預測 Y;超過 ±10% 標示偏高/偏低');
+  // 資料區:年月、實際 Y、各 X、預測 Y、差異、差異%、狀態
+  const H=6, first=H+1;               // 0-based:表頭列 6,資料從 7 開始
+  const aC=1, xC=q=>2+q, pC=2+k, dC=3+k, qC=4+k, sC=5+k;
+  const heads=['年月',`實際 ${m.yName}`,...m.xNames,`預測 ${m.yName}`,'差異(實際−預測)','差異%','狀態'];
+  heads.forEach((h,c)=>put(H,c,h));
+  const coefCell=j=>`$${C(1+j)}$4`;   // 係數位於 Excel 第 4 列
+  pf.rows.forEach((r,i)=>{
+    const R=first+i, X=R+1;           // X = Excel 列號
+    put(R,0,r.date);
+    if(Number.isFinite(r.act)) put(R,aC,r.act);
+    r.xs.forEach((v,q)=>{ if(Number.isFinite(v)) put(R,xC(q),v); });
+    if(Number.isFinite(r.pred)){
+      const terms=[]; if(ic) terms.push(coefCell(0));
+      for(let q=0;q<k;q++) terms.push(`${coefCell(q+ic)}*${C(xC(q))}${X}`);
+      put(R,pC,{t:'n',v:r.pred,f:terms.join('+')});
+    }
+    if(Number.isFinite(r.diff)) put(R,dC,{t:'n',v:r.diff,f:`${C(aC)}${X}-${C(pC)}${X}`});
+    if(Number.isFinite(r.pct)){
+      put(R,qC,{t:'n',v:r.pct,f:`(${C(aC)}${X}-${C(pC)}${X})/${C(pC)}${X}`,z:'0.00%'});
+      put(R,sC,{t:'s',v:r.status,f:`IF(${C(qC)}${X}>0.1,"偏高",IF(${C(qC)}${X}<-0.1,"偏低","正常"))`});
+    }
+  });
+  // 合計與比較
+  const lastR=first+pf.rows.length-1, x1=first+1, x2=lastR+1;
+  const rng=c=>`${C(c)}${x1}:${C(c)}${x2}`;
+  const S=lastR+2, SX=S+1;
+  const tot=pf.sumP!==0?(pf.sumA-pf.sumP)/pf.sumP:NaN;
+  put(S,0,'合計(僅計入有實際值的月份)');
+  put(S,aC,{t:'n',v:pf.sumA,f:`SUMIFS(${rng(aC)},${rng(dC)},"<>")`});
+  put(S,pC,{t:'n',v:pf.sumP,f:`SUMIFS(${rng(pC)},${rng(dC)},"<>")`});
+  put(S,dC,{t:'n',v:pf.sumA-pf.sumP,f:`${C(aC)}${SX}-${C(pC)}${SX}`});
+  if(Number.isFinite(tot)) put(S,qC,{t:'n',v:tot,f:`(${C(aC)}${SX}-${C(pC)}${SX})/${C(pC)}${SX}`,z:'0.00%'});
+  put(S+1,0,'平均絕對差異%');
+  if(Number.isFinite(pf.mape)) put(S+1,qC,{t:'n',v:pf.mape,f:`SUMPRODUCT(ABS(${rng(qC)}))/COUNT(${rng(qC)})`,z:'0.00%'});
+  put(S+2,0,'差異在 ±5% 內的期數');
+  put(S+2,qC,{t:'n',v:pf.within5,f:`COUNTIFS(${rng(qC)},">=-0.05",${rng(qC)},"<=0.05")`});
+  put(S+3,0,'偏高期數(> +10%)');
+  put(S+3,qC,{t:'n',v:pf.nHigh,f:`COUNTIF(${rng(sC)},"偏高")`});
+  put(S+4,0,'偏低期數(< −10%)');
+  put(S+4,qC,{t:'n',v:pf.nLow,f:`COUNTIF(${rng(sC)},"偏低")`});
+  put(S+5,0,'有實際值可比較的期數');
+  put(S+5,qC,{t:'n',v:pf.nPct,f:`COUNT(${rng(qC)})`});
+  ws['!ref']=XLSX.utils.encode_range({s:{r:0,c:0},e:{r:S+5,c:Math.max(sC,m.coefs.length)}});
+  ws['!cols']=[{wch:26},...Array.from({length:Math.max(sC,m.coefs.length)},()=>({wch:16}))];
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,'期間預測');
+  XLSX.writeFile(wb,`期間預測_${m.yName}_${pf.rows[0].date}_${pf.rows[pf.rows.length-1].date}.xlsx`);
+}
+
+/* ================= 範例資料 ================= */
+function sampleWorkbook(){
+  let seed=20240101; const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
+  const norm=()=>Math.sqrt(-2*Math.log(rnd()||1e-9))*Math.cos(2*Math.PI*rnd());
+  const aoa=[['年月','銷售額','廣告費','平均售價','平均氣溫']];
+  for(let i=0;i<48;i++){
+    const y=2022+Math.floor(i/12), mo=i%12+1;
+    const ad=50+rnd()*50, price=95+rnd()*20, temp=23+6*Math.sin((mo-4)/12*2*Math.PI)+norm();
+    const sales=300+4.2*ad-2.5*price+3*temp+norm()*15;
+    aoa.push([`${y}-${String(mo).padStart(2,'0')}`,+sales.toFixed(1),+ad.toFixed(1),+price.toFixed(1),+temp.toFixed(1)]);
+  }
+  const ws=XLSX.utils.aoa_to_sheet(aoa); ws['!cols']=[{wch:10},{wch:10},{wch:10},{wch:10},{wch:10}];
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'範例資料'); return wb;
+}
+
+/* ================= 事件 ================= */
+function readFile(file){
+  if(!file) return;
+  const isCsv=/\.csv$/i.test(file.name), r=new FileReader();
+  r.onload=e=>{
+    try{
+      const wb=isCsv?XLSX.read(e.target.result,{type:'string',cellDates:true}):XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:true});
+      loadWorkbook(wb,file.name);
+    }catch(err){ showFileError('無法讀取這個檔案,請確認是 .xlsx、.xls 或 .csv 格式。'); }
+  };
+  isCsv?r.readAsText(file,'utf-8'):r.readAsArrayBuffer(file);
+}
+$('#file').addEventListener('change',e=>{readFile(e.target.files[0]); e.target.value='';});
+const drop=$('#drop');
+['dragenter','dragover'].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.add('over');}));
+['dragleave','drop'].forEach(t=>drop.addEventListener(t,e=>{e.preventDefault();drop.classList.remove('over');}));
+drop.addEventListener('drop',e=>readFile(e.dataTransfer.files[0]));
+$('#sampleBtn').addEventListener('click',()=>XLSX.writeFile(sampleWorkbook(),'迴歸分析_範例資料.xlsx'));
+$('#sheetSel').addEventListener('change',e=>loadSheet(Number(e.target.value)));
+$('#ySel').addEventListener('change',syncX);
+$('#runBtn').addEventListener('click',()=>{
+  const msg=$('#runMsg'); msg.className='note'; msg.textContent='';
+  const y=Number($('#ySel').value);
+  const xs=[...$('#xList').querySelectorAll('input:checked')].map(c=>Number(c.value));
+  if(!xs.length){msg.className='note err';msg.textContent='請至少勾選一個 X。';return;}
+  try{
+    state.model=analyze(y,xs,$('#intercept').checked,Number($('#conf').value));
+    render(state.model);
+  }catch(err){ msg.className='note err'; msg.textContent=err.message; }
+});
+$('#predBtn').addEventListener('click',doPredict);
+$('#pTpl').addEventListener('click',downloadTemplate);
+$('#pFile').addEventListener('change',e=>{
+  const file=e.target.files[0]; e.target.value=''; if(!file||!state.model) return;
+  const isCsv=/\.csv$/i.test(file.name), r=new FileReader();
+  r.onload=ev=>{
+    try{
+      const wb=isCsv?XLSX.read(ev.target.result,{type:'string',cellDates:true}):XLSX.read(new Uint8Array(ev.target.result),{type:'array',cellDates:true});
+      importFilled(wb);
+    }catch(err){ $('#pMsg').className='note err'; $('#pMsg').textContent=err.message||'無法讀取這個檔案。'; $('#pResult').hidden=true; }
+  };
+  isCsv?r.readAsText(file,'utf-8'):r.readAsArrayBuffer(file);
+});
+$('#pExport').addEventListener('click',exportPeriod);
+</script>
+</body>
+</html>
