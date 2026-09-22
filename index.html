@@ -54,6 +54,10 @@ h2{font-family:var(--serif);font-size:1.15rem;margin:0 0 12px;font-weight:700}
 fieldset.field{border:0;padding:0;margin:0 0 14px}
 legend{font-weight:500;padding:0;margin-bottom:4px}
 select{font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:4px;padding:7px 8px}
+.xtools{display:flex;gap:6px;margin-bottom:6px}
+.minibtn{font:inherit;font-size:.82rem;color:var(--accent);background:transparent;border:1px solid var(--line);border-radius:4px;padding:3px 10px;cursor:pointer}
+.minibtn:hover{border-color:var(--accent)}
+#sgBtn{width:100%;margin-top:8px}
 .xlist{display:flex;flex-direction:column;gap:2px;max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:4px;padding:6px 8px}
 .check{display:flex;gap:8px;align-items:center;font-weight:400;cursor:pointer;padding:2px 0}
 .check input{accent-color:var(--accent);width:16px;height:16px;flex:none}
@@ -156,7 +160,13 @@ tr.flag td{background:var(--row-flag)}
         </label>
         <fieldset class="field">
           <legend>自變數 X(可複選)</legend>
+          <div class="xtools">
+            <button class="minibtn" id="xAll" type="button">全選</button>
+            <button class="minibtn" id="xNone" type="button">全清除</button>
+          </div>
           <div id="xList" class="xlist"></div>
+          <button class="secondary" id="sgBtn" type="button">依勾選的 X 找建議組合</button>
+          <div class="note" id="sgHint"></div>
         </fieldset>
         <label class="check"><input type="checkbox" id="intercept" checked> 包含截距項</label>
         <label class="field" style="margin-top:12px">信賴水準
@@ -431,7 +441,13 @@ function quickFit(yIdx,xIdx,intercept,alpha){
 function computeSuggestions(){
   if(!state.numericCols.length) return;
   const y=Number($('#ySel').value), intercept=$('#intercept').checked, alpha=1-Number($('#conf').value);
-  let cand=state.numericCols.filter(j=>j!==y);
+  let cand=[...$('#xList').querySelectorAll('input:checked')].map(c=>Number(c.value)).filter(j=>j!==y);
+  $('#sgHint').className='note'; $('#sgHint').textContent='';
+  if(!cand.length){
+    state.sg=[]; $('#sgInfo').textContent=`Y:${state.headers[y]}。目前沒有勾選任何 X。`;
+    $('#sgTable').innerHTML='<tbody><tr><td style="text-align:left;white-space:normal;color:var(--muted)">請在左側勾選至少一個 X,再按「依勾選的 X 找建議組合」。</td></tr></tbody>';
+    $('#suggestSec').hidden=false; return;
+  }
   const over=cand.length>SG_MAX_CAND; if(over) cand=cand.slice(0,SG_MAX_CAND);
   const nY=state.num[y].filter(Number.isFinite).length;
   const maxK=Math.max(1,Math.min(SG_MAX_K,Math.floor(nY/10),cand.length));
@@ -449,7 +465,7 @@ function computeSuggestions(){
   }
   ok.sort((a,b)=>b.adjR2-a.adjR2);
   state.sg=ok.slice(0,5);
-  $('#sgInfo').textContent=`Y:${state.headers[y]}。候選變數 ${cand.length} 個${over?`(超過 ${SG_MAX_CAND} 個,僅使用前 ${SG_MAX_CAND} 個)`:''};依資料期數(${nY} 期),每組最多 ${maxK} 個 X。共比較 ${tried} 種組合,${ok.length} 種通過篩選。`;
+  $('#sgInfo').textContent=`Y:${state.headers[y]}。候選範圍:勾選的 ${cand.length} 個 X${over?`(超過 ${SG_MAX_CAND} 個,僅使用前 ${SG_MAX_CAND} 個)`:''};依資料期數(${nY} 期),每組最多 ${maxK} 個 X。共比較 ${tried} 種組合,${ok.length} 種通過篩選。`;
   renderSuggestions();
   $('#suggestSec').hidden=false;
 }
@@ -628,13 +644,17 @@ function renderMetrics(m){
     `Breusch-Pagan 檢定。${m.pBP<0.05?'誤差大小會隨 X 變化,標準誤與 p 值可能不準,可考慮將變數取對數。':'誤差大小穩定,沒有異質變異問題。'}`]);
   const cookTh=4/m.n;
   const lim=2*m.s;
-  const big=m.dates.filter((_,i)=>Math.abs(m.resid[i])>lim);
+  const bigI=m.dates.map((_,i)=>i).filter(i=>Math.abs(m.resid[i])>lim);
   const infl=m.dates.filter((_,i)=>m.cook[i]>cookTh&&Math.abs(m.resid[i])<=lim);
-  let outHtml=`實際值與配適值的差距超過 ±${fmt(lim,2)}(2 倍迴歸標準誤),即視為離群月份。`;
-  outHtml+=big.length?`<br>超過門檻:${esc(big.join('、'))}。`:'<br>目前沒有月份超過門檻。';
-  if(infl.length) outHtml+=`<br>另有對方程式影響特別大的月份:${esc(infl.join('、'))}。`;
-  if(big.length||infl.length) outHtml+='<br>建議回頭檢查這些月份是否有特殊事件或輸入錯誤。';
-  C.push(['離群門檻(殘差 ±2 倍標準誤)',`±${fmt(lim,2)}`,big.length+infl.length?'warn':'good',{html:outHtml}]);
+  const rate=i=>m.fitted[i]!==0?fmtPct(m.resid[i]/m.fitted[i]):'—';
+  let outHtml=`離群門檻:實際值與預測值差距超過 ±${fmt(lim,2)}(2 倍迴歸標準誤)。`;
+  outHtml+=bigI.length
+    ?`<br>超過門檻的月份與差異率:<ul class="outlist">${bigI.map(i=>`<li>${esc(m.dates[i])}:${rate(i)}</li>`).join('')}</ul>`
+    :'<br>目前沒有月份超過門檻。';
+  if(infl.length) outHtml+=`另有對方程式影響特別大的月份:${esc(infl.join('、'))}。<br>`;
+  if(bigI.length||infl.length) outHtml+='建議回頭檢查這些月份是否有特殊事件或輸入錯誤。';
+  outHtml+='<br><span style="font-size:.78rem">差異率 =(實際 Y − 預測 Y)÷ 預測 Y</span>';
+  C.push(['離群月份',`${bigI.length} 期`,bigI.length+infl.length?'warn':'good',{html:outHtml}]);
   const ratio=m.n/m.k;
   C.push(['樣本數',`${m.n} 期`,ratio<10?'warn':'good',
     ratio<10?`每個 X 平均只有 ${fmt(ratio,1)} 筆資料,一般建議至少 10–20 筆,結果可能不穩定。`:`每個 X 平均有 ${fmt(ratio,1)} 筆資料,樣本量足夠。`]);
@@ -873,6 +893,11 @@ $('#sampleBtn').addEventListener('click',()=>XLSX.writeFile(sampleWorkbook(),'�
 $('#sheetSel').addEventListener('change',e=>loadSheet(Number(e.target.value)));
 $('#ySel').addEventListener('change',()=>{syncX(); computeSuggestions();});
 ['#intercept','#conf','#sgSig','#sgVif'].forEach(sel=>$(sel).addEventListener('change',computeSuggestions));
+$('#xAll').addEventListener('click',()=>{ $('#xList').querySelectorAll('input:not(:disabled)').forEach(cb=>cb.checked=true); xChanged(); });
+$('#xNone').addEventListener('click',()=>{ $('#xList').querySelectorAll('input').forEach(cb=>cb.checked=false); xChanged(); });
+$('#xList').addEventListener('change',xChanged);
+function xChanged(){ const h=$('#sgHint'); h.className='note'; h.textContent='勾選已變更,按上面的按鈕即可重新找建議組合。'; }
+$('#sgBtn').addEventListener('click',computeSuggestions);
 $('#sgTable').addEventListener('click',e=>{const tr=e.target.closest('tr[data-i]'); if(tr) applySuggestion(Number(tr.dataset.i));});
 $('#runBtn').addEventListener('click',()=>{
   const msg=$('#runMsg'); msg.className='note'; msg.textContent='';
