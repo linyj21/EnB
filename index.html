@@ -220,6 +220,11 @@ tr.flag td{background:var(--row-flag)}
 
         <section class="panel">
           <h2>係數估計(斜率、截距與 t 檢定)</h2>
+          <div class="chartwrap" style="margin:0 0 18px">
+            <h3>殘差 vs 預測值</h3>
+            <div class="chartbox"><canvas id="chartResid" role="img" aria-label="殘差對預測值散布圖"></canvas></div>
+            <p class="chartcap">殘差 = 實際 Y − 預測 Y。點若隨機散布在 0 線兩側,表示模型設定合理;若呈喇叭狀(越往右越分散)代表有異質變異,若呈曲線狀代表關係可能不是直線。紅點為超過離群門檻的月份,虛線為 ±離群門檻。</p>
+          </div>
           <div class="scroll"><table id="coefTable"></table></div>
           <p class="legend-note">顯著性標記:*** p &lt; 0.001、** p &lt; 0.01、* p &lt; 0.05、. p &lt; 0.1。VIF 僅在有兩個以上 X 時計算。</p>
         </section>
@@ -580,6 +585,7 @@ function render(m){
       i=>`殘差:${fmt(m.resid[i],2)}${Math.abs(m.resid[i])>lim?'(超過離群門檻)':''}`);
   }
   renderCoefs(m);
+  drawResid('chartResid',m.fitted,m.resid,m.dates,2*m.s,m.yName);
   renderPredict(m);
   setupPeriod(m);
   $('#results').hidden=false;
@@ -591,6 +597,32 @@ function dwText(d){ return d<1.5?'殘差有正自我相關,p 值可能被低估,
 /* ================= 折線圖 ================= */
 const charts={};
 const cssv=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function drawResid(id,fitted,resid,dates,lim,yName){
+  if(typeof Chart==='undefined') return;
+  if(charts[id]) charts[id].destroy();
+  const ink=cssv('--ink'), muted=cssv('--muted'), line=cssv('--line'), acc=cssv('--accent'), bad=cssv('--bad');
+  Chart.defaults.font.family=getComputedStyle(document.body).fontFamily;
+  Chart.defaults.color=muted;
+  const nf=v=>Number(v).toLocaleString('en-US',{maximumFractionDigits:2});
+  const lo=Math.min(...fitted), hi=Math.max(...fitted), pad=(hi-lo)*0.03||1;
+  const band=[{x:lo-pad,y:lim},{x:hi+pad,y:lim}], band2=[{x:lo-pad,y:-lim},{x:hi+pad,y:-lim}];
+  charts[id]=new Chart(document.getElementById(id),{
+    type:'scatter',
+    data:{datasets:[
+      {label:'殘差',data:fitted.map((f,i)=>({x:f,y:resid[i],d:dates[i]})),
+       backgroundColor:resid.map(e=>Math.abs(e)>lim?bad:ink),pointRadius:resid.map(e=>Math.abs(e)>lim?5:3.5)},
+      {label:'0 線',data:[{x:lo-pad,y:0},{x:hi+pad,y:0}],showLine:true,borderColor:acc,borderWidth:1.5,pointRadius:0},
+      {label:'離群門檻',data:band,showLine:true,borderColor:muted,borderWidth:1,borderDash:[5,4],pointRadius:0},
+      {data:band2,showLine:true,borderColor:muted,borderWidth:1,borderDash:[5,4],pointRadius:0}
+    ]},
+    options:{responsive:true,maintainAspectRatio:false,animation:false,
+      plugins:{legend:{labels:{color:ink,boxWidth:14,filter:it=>!!it.text}},
+        tooltip:{filter:it=>it.datasetIndex===0,
+          callbacks:{label:c=>`${c.raw.d}|預測 ${nf(c.raw.x)}、殘差 ${nf(c.raw.y)}`}}},
+      scales:{x:{grid:{color:line},title:{display:true,text:`預測 ${yName}`},ticks:{callback:v=>nf(v)}},
+              y:{grid:{color:line},title:{display:true,text:'殘差'},ticks:{callback:v=>nf(v)}}}}
+  });
+}
 function drawLine(id,labels,actual,pred,yName,pointColors,tipExtra){
   if(typeof Chart==='undefined') return;
   if(charts[id]) charts[id].destroy();
